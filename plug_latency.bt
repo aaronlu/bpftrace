@@ -1,0 +1,36 @@
+// this script will show the wakeup latency of those tasks
+// that potentially have blkio plugged while preempted.
+// these tasks can cause disk wait skyrocketed.
+
+#include <linux/sched.h>
+
+tracepoint:sched:sched_switch
+{
+	$t = (struct task_struct *)curtask;
+	if ($t->pid != args->prev_pid) {
+		printf("tid mismatch pid\n");
+		exit();
+	}
+
+	if ($t->__state == 0 && $t->plug != 0) {
+		@ts_start[tid] = nsecs;
+	}
+
+	if (@ts_start[args->next_pid] == 0) {
+		return;
+	}
+
+	$delta = nsecs - @ts_start[args->next_pid];
+	delete(@ts_start[args->next_pid]);
+	@latencies = hist($delta);
+}
+
+interval:s:5
+{
+	exit();
+}
+
+END
+{
+	clear(@ts_start);
+}
